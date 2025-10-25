@@ -1,0 +1,1 @@
+# home-assistant-apple-device-latest-version
