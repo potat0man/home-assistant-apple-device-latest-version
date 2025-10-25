@@ -37,6 +37,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
+    
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -59,5 +60,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
+
 class InvalidDeviceModel(HomeAssistantError):
+    """Error to indicate invalid device model."""
+    pass
+
+
 class InvalidDeviceName(HomeAssistantError):
+    """Error to indicate invalid device name."""
+    pass
