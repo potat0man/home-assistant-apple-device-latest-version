@@ -1,4 +1,3 @@
-"""Config flow for Apple Version Tracker."""
 from __future__ import annotations
 
 import logging
@@ -13,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "apple_version_tracker"
+DOMAIN = "apple_device_latest_version"
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -24,7 +23,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input."""
     device_model = data["device_model"].strip()
     device_name = data["device_name"].strip()
 
@@ -38,14 +36,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Apple Version Tracker."""
-
     VERSION = 1
-
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
         errors: dict[str, str] = {}
         
         if user_input is not None:
@@ -65,10 +59,5 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-
 class InvalidDeviceModel(HomeAssistantError):
-    """Error to indicate invalid device model."""
-
-
 class InvalidDeviceName(HomeAssistantError):
-    """Error to indicate invalid device name."""

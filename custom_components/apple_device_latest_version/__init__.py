@@ -1,4 +1,3 @@
-"""Apple Version Tracker Integration."""
 from __future__ import annotations
 
 import logging
@@ -7,12 +6,11 @@ from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "apple_version_tracker"
+DOMAIN = "apple_device_latest_version"
 PLATFORMS = ["sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Apple Version Tracker from a config entry."""
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry.data
 
@@ -21,7 +19,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:

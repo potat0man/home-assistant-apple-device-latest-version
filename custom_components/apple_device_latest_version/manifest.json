@@ -1,6 +1,6 @@
 {
-  "domain": "apple_version_tracker",
-  "name": "Apple Version Tracker",
+  "domain": "apple_device_latest_version",
+  "name": "Apple Device Latest Version",
   "codeowners": [],
   "config_flow": true,
   "documentation": "https://github.com/potat0man/home-assistant-apple-device-latest-version",

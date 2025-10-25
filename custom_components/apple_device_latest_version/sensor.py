@@ -1,4 +1,3 @@
-"""Apple Version Tracker sensor platform."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -21,31 +20,23 @@ from homeassistant.helpers.update_coordinator import (
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "apple_version_tracker"
+DOMAIN = "apple_device_latest_version"
 SCAN_INTERVAL = timedelta(seconds=600)  # 10 minutes
 API_URL = "https://gdmf.apple.com/v2/pmv"
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Apple Version Tracker sensor from a config entry."""
     device_model = config_entry.data["device_model"]
     device_name = config_entry.data["device_name"]
-
     coordinator = AppleVersionCoordinator(hass, device_model)
     await coordinator.async_config_entry_first_refresh()
-
     async_add_entities([AppleVersionSensor(coordinator, device_name, device_model)])
 
-
 class AppleVersionCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching Apple version data."""
-
     def __init__(self, hass: HomeAssistant, device_model: str) -> None:
-        """Initialize."""
         self.device_model = device_model
         super().__init__(
             hass,
@@ -55,7 +46,6 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from Apple API."""
         session = async_get_clientsession(self.hass, verify_ssl=False)
         
         try:
@@ -104,15 +94,12 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
 
 
 class AppleVersionSensor(CoordinatorEntity, SensorEntity):
-    """Representation of an Apple Version sensor."""
-
     def __init__(
         self,
         coordinator: AppleVersionCoordinator,
         device_name: str,
         device_model: str,
     ) -> None:
-        """Initialize the sensor."""
         super().__init__(coordinator)
         self._device_name = device_name
         self._device_model = device_model
@@ -122,12 +109,10 @@ class AppleVersionSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        """Return the state of the sensor."""
         return self.coordinator.data.get("version", "unknown")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the state attributes."""
         return {
             "product_version": self.coordinator.data.get("version"),
             "build": self.coordinator.data.get("build"),

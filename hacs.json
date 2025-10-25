@@ -1,0 +1,8 @@
+{
+  "name": "Apple Device Latest Version",
+  "filename": "apple_device_latest_version.zip",
+  "homeassistant": "2025.10.3",
+  "hide_default_branch": true,
+  "render_readme": true,
+  "zip_release": true
+}
