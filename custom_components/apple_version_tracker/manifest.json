@@ -1,0 +1,11 @@
+{
+  "domain": "apple_version_tracker",
+  "name": "Apple Version Tracker",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/potat0man/home-assistant-apple-device-latest-version",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "1.0.0"
+}

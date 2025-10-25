@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Apple Device",
+        "description": "Enter the device model to track its latest iOS/watchOS/tvOS version.",
+        "data": {
+          "device_model": "Device Model (e.g., iPhone14,4, iPad12,1, Watch7,1, AppleTV6,2)",
+          "device_name": "Friendly Name (e.g., iPhone, iPad, Watch, AppleTV)"
+        }
+      }
+    },
+    "error": {
+      "invalid_device_model": "Please enter a valid device model",
+      "invalid_device_name": "Please enter a device name",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device model is already configured"
+    }
+  }
+}
