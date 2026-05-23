@@ -56,14 +56,21 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
                     
                     data = await response.json()
                     
-                    # Parse versions for the specific device model
-                    versions = data.get("PublicAssetSets", {}).get("iOS", [])
-                    
+                    # Parse versions for the specific device model.
+                    # The API groups assets under product families (iOS, watchOS, tvOS, macOS, etc.).
+                    # Collect all asset lists and search across them so watchOS/tvOS/macOS
+                    # models are matched correctly instead of only checking iOS.
+                    public_sets = data.get("PublicAssetSets", {}) or {}
+                    versions: list[dict[str, Any]] = []
+                    for asset_list in public_sets.values():
+                        if isinstance(asset_list, list):
+                            versions.extend(asset_list)
+
                     # Filter versions that support this device
                     matches = [
-                        v for v in versions
-                        if "SupportedDevices" in v
-                        and self.device_model in v.get("SupportedDevices", [])
+                        v
+                        for v in versions
+                        if "SupportedDevices" in v and self.device_model in v.get("SupportedDevices", [])
                     ]
                     
                     if not matches:
