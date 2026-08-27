@@ -17,6 +17,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .device_names import DEVICE_NAMES
+
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "apple_device_latest_version"
@@ -66,6 +68,18 @@ PREFERRED_TYPE_ORDER = (
 
 def _device_type_name(device_type: str) -> str:
     return DEVICE_TYPE_NAMES.get(device_type, device_type)
+
+
+def _model_label(model: str) -> str:
+    """Label a model as "iPhone 13 mini (iPhone14,4)".
+
+    The identifier stays visible because it is what gets stored, and because
+    several models share a marketing name (the Wi-Fi and cellular iPad Pro,
+    for instance). A model Apple has published but the name table does not
+    know yet is shown as the bare identifier.
+    """
+    name = DEVICE_NAMES.get(model)
+    return f"{name} ({model})" if name else model
 
 
 def _model_sort_key(model: str) -> tuple[int, str, int, int]:
@@ -198,7 +212,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required("device_model"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=self._models_by_type.get(self._device_type, []),
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=model, label=_model_label(model)
+                                )
+                                for model in self._models_by_type.get(
+                                    self._device_type, []
+                                )
+                            ],
                             mode=selector.SelectSelectorMode.DROPDOWN,
                             custom_value=True,
                         )
