@@ -54,7 +54,7 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
                     if response.status != 200:
                         raise UpdateFailed(f"Error fetching data: {response.status}")
                     
-                    data = await response.json()
+                    data = await response.json(content_type=None)
                     
                     # Parse versions for the specific device model.
                     # The API groups assets under product families (iOS, watchOS, tvOS, macOS, etc.).
