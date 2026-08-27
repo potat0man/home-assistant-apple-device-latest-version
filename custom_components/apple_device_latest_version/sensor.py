@@ -46,7 +46,9 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        session = async_get_clientsession(self.hass)
+        # gdmf.apple.com serves a certificate that does not validate against
+        # the standard trust store, so verification has to be off for this host.
+        session = async_get_clientsession(self.hass, verify_ssl=False)
 
         try:
             async with asyncio.timeout(10):
