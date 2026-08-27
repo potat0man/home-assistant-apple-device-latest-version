@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -23,6 +24,25 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "apple_device_latest_version"
 SCAN_INTERVAL = timedelta(seconds=600)  # 10 minutes
 API_URL = "https://gdmf.apple.com/v2/pmv"
+
+
+def _release_sort_key(asset: dict[str, Any]) -> tuple[tuple[int, ...], str]:
+    """Order a device's available releases, newest first.
+
+    Apple offers several release trains for one device at once and posts them
+    all on the same day: an Apple Watch Series 7 is offered watchOS 26.6
+    alongside 11.6.2 and 9.6.4, every one of them dated identically. Sorting
+    by PostingDate therefore ties, and whichever train Apple happened to list
+    first wins, which is how a watch running 26.6 was reported as 9.6.4.
+
+    Compare the version numerically instead, so 26.6 beats 9.6.4 (as strings
+    it would not), and keep PostingDate as the tie-breaker.
+    """
+    version = asset.get("ProductVersion") or ""
+    return (
+        tuple(int(part) for part in re.findall(r"\d+", version)),
+        asset.get("PostingDate") or "",
+    )
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -59,9 +79,9 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
                     data = await response.json(content_type=None)
                     
                     # Parse versions for the specific device model.
-                    # The API groups assets under product families (iOS, watchOS, tvOS, macOS, etc.).
-                    # Collect all asset lists and search across them so watchOS/tvOS/macOS
-                    # models are matched correctly instead of only checking iOS.
+                    # Apple groups assets loosely: watchOS and tvOS releases are
+                    # filed under the "iOS" key rather than keys of their own, so
+                    # every asset list has to be searched to find a given device.
                     public_sets = data.get("PublicAssetSets", {}) or {}
                     versions: list[dict[str, Any]] = []
                     for asset_list in public_sets.values():
@@ -85,8 +105,8 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
                             "posting_date": None,
                         }
                     
-                    # Sort by posting date and get the latest
-                    matches.sort(key=lambda x: x.get("PostingDate", ""), reverse=True)
+                    # Highest version number wins, not most recently posted.
+                    matches.sort(key=_release_sort_key, reverse=True)
                     latest = matches[0]
                     
                     return {
