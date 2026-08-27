@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
+from collections.abc import Iterable
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -19,15 +22,87 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "apple_device_latest_version"
 API_URL = "https://gdmf.apple.com/v2/pmv"
 
+# Apple device identifiers are a family prefix followed by a major,minor
+# revision: "iPhone14,4", "Watch7,1", "MacBookPro18,1".
+_IDENTIFIER = re.compile(r"^([A-Za-z]+)(\d+),(\d+)$")
 
-async def _async_get_device_models(hass: HomeAssistant) -> list[str]:
-    """Fetch the list of device model identifiers Apple currently supports."""
+# Bucket for identifiers that do not follow the pattern above.
+OTHER_TYPE = "other"
+
+# Friendly names for the device families Apple currently ships. A family that
+# is missing here still shows up in the picker under its raw prefix, so new
+# Apple hardware needs no code change to be selectable.
+DEVICE_TYPE_NAMES = {
+    "AppleTV": "Apple TV",
+    "AudioAccessory": "HomePod",
+    "iMac": "iMac",
+    "iMacPro": "iMac Pro",
+    "iPad": "iPad",
+    "iPhone": "iPhone",
+    "iPod": "iPod touch",
+    "Mac": "Mac",
+    "MacBook": "MacBook",
+    "MacBookAir": "MacBook Air",
+    "MacBookPro": "MacBook Pro",
+    "Macmini": "Mac mini",
+    "MacPro": "Mac Pro",
+    "RealityDevice": "Apple Vision Pro",
+    "VirtualMac": "Virtual Mac",
+    "Watch": "Apple Watch",
+    OTHER_TYPE: "Other",
+}
+
+# The families most people are here for, shown at the top of the picker.
+# Everything else follows alphabetically.
+PREFERRED_TYPE_ORDER = (
+    "iPhone",
+    "iPad",
+    "Watch",
+    "AppleTV",
+    "AudioAccessory",
+    "RealityDevice",
+)
+
+
+def _device_type_name(device_type: str) -> str:
+    return DEVICE_TYPE_NAMES.get(device_type, device_type)
+
+
+def _model_sort_key(model: str) -> tuple[int, str, int, int]:
+    """Sort model identifiers so iPhone9,1 comes before iPhone14,4."""
+    if match := _IDENTIFIER.match(model):
+        return (0, match.group(1), int(match.group(2)), int(match.group(3)))
+    return (1, model, 0, 0)
+
+
+def _device_type_sort_key(device_type: str) -> tuple[int, str]:
+    try:
+        return (PREFERRED_TYPE_ORDER.index(device_type), "")
+    except ValueError:
+        return (len(PREFERRED_TYPE_ORDER), _device_type_name(device_type).lower())
+
+
+def _group_by_device_type(models: Iterable[str]) -> dict[str, list[str]]:
+    """Group model identifiers by their family prefix."""
+    grouped: dict[str, list[str]] = defaultdict(list)
+    for model in models:
+        match = _IDENTIFIER.match(model)
+        grouped[match.group(1) if match else OTHER_TYPE].append(model)
+
+    return {
+        device_type: sorted(type_models, key=_model_sort_key)
+        for device_type, type_models in grouped.items()
+    }
+
+
+async def _async_fetch_device_types(hass: HomeAssistant) -> dict[str, list[str]]:
+    """Fetch every device Apple currently publishes versions for, by family."""
     session = async_get_clientsession(hass)
 
     async with asyncio.timeout(10):
         async with session.get(API_URL) as response:
             response.raise_for_status()
-            data = await response.json()
+            data = await response.json(content_type=None)
 
     models: set[str] = set()
     for asset_list in (data.get("PublicAssetSets") or {}).values():
@@ -35,31 +110,10 @@ async def _async_get_device_models(hass: HomeAssistant) -> list[str]:
             for asset in asset_list:
                 models.update(asset.get("SupportedDevices", []))
 
-    return sorted(models)
+    return _group_by_device_type(models)
 
 
-def _build_data_schema(device_models: list[str]) -> vol.Schema:
-    if device_models:
-        device_model_selector: Any = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=device_models,
-                mode=selector.SelectSelectorMode.DROPDOWN,
-                custom_value=True,
-                sort=True,
-            )
-        )
-    else:
-        device_model_selector = str
-
-    return vol.Schema(
-        {
-            vol.Required("device_model"): device_model_selector,
-            vol.Required("device_name"): str,
-        }
-    )
-
-
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+def _validated_input(data: dict[str, Any]) -> dict[str, str]:
     device_model = data["device_model"].strip()
     device_name = data["device_name"].strip()
 
@@ -69,53 +123,134 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if not device_name:
         raise InvalidDeviceName
 
-    return {"title": device_name, "device_model": device_model}
+    return {"device_model": device_model, "device_name": device_name}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
+    def __init__(self) -> None:
+        self._models_by_type: dict[str, list[str]] = {}
+        self._device_type: str = ""
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
+        """Pick which kind of Apple device to track."""
+        if not self._models_by_type:
+            try:
+                self._models_by_type = await _async_fetch_device_types(self.hass)
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
+                _LOGGER.warning(
+                    "Could not fetch Apple's device list (%s); falling back to "
+                    "entering a model identifier by hand",
+                    err,
+                )
+                return await self.async_step_manual()
 
-        try:
-            device_models = await _async_get_device_models(self.hass)
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            _LOGGER.warning(
-                "Could not fetch the list of supported device models; "
-                "falling back to manual entry"
-            )
-            device_models = []
+        if not self._models_by_type:
+            return await self.async_step_manual()
 
         if user_input is not None:
-            try:
-                info = await validate_input(self.hass, user_input)
-            except InvalidDeviceModel:
-                errors["device_model"] = "invalid_device_model"
-            except InvalidDeviceName:
-                errors["device_name"] = "invalid_device_name"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
-            else:
-                await self.async_set_unique_id(info["device_model"])
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=info["title"], data=user_input)
+            self._device_type = user_input["device_type"]
+            return await self.async_step_model()
+
+        options = [
+            selector.SelectOptionDict(
+                value=device_type, label=_device_type_name(device_type)
+            )
+            for device_type in sorted(self._models_by_type, key=_device_type_sort_key)
+        ]
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_build_data_schema(device_models),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("device_type"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_model(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the exact model within the chosen device type."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if (entry := await self._async_create_entry(user_input, errors)) is not None:
+                return entry
+
+        device_type_name = _device_type_name(self._device_type)
+
+        return self.async_show_form(
+            step_id="model",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("device_model"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._models_by_type.get(self._device_type, []),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                            custom_value=True,
+                        )
+                    ),
+                    vol.Required("device_name", default=device_type_name): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={"device_type": device_type_name},
+        )
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter a model identifier by hand when Apple's list is unreachable."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if (entry := await self._async_create_entry(user_input, errors)) is not None:
+                return entry
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("device_model"): str,
+                    vol.Required("device_name"): str,
+                }
+            ),
             errors=errors,
         )
+
+    async def _async_create_entry(
+        self, user_input: dict[str, Any], errors: dict[str, str]
+    ) -> ConfigFlowResult | None:
+        """Create the entry, or fill in errors and return None."""
+        try:
+            info = _validated_input(user_input)
+        except InvalidDeviceModel:
+            errors["device_model"] = "invalid_device_model"
+        except InvalidDeviceName:
+            errors["device_name"] = "invalid_device_name"
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+        else:
+            await self.async_set_unique_id(info["device_model"])
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=info["device_name"], data=info)
+
+        return None
 
 
 class InvalidDeviceModel(HomeAssistantError):
     """Error to indicate invalid device model."""
-    pass
 
 
 class InvalidDeviceName(HomeAssistantError):
     """Error to indicate invalid device name."""
-    pass
