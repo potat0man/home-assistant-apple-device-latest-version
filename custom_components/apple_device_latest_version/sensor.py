@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -46,10 +46,10 @@ class AppleVersionCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        session = async_get_clientsession(self.hass, verify_ssl=False)
-        
+        session = async_get_clientsession(self.hass)
+
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with session.get(API_URL) as response:
                     if response.status != 200:
                         raise UpdateFailed(f"Error fetching data: {response.status}")
