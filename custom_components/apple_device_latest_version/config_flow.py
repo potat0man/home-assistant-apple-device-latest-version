@@ -97,7 +97,9 @@ def _group_by_device_type(models: Iterable[str]) -> dict[str, list[str]]:
 
 async def _async_fetch_device_types(hass: HomeAssistant) -> dict[str, list[str]]:
     """Fetch every device Apple currently publishes versions for, by family."""
-    session = async_get_clientsession(hass)
+    # gdmf.apple.com serves a certificate that does not validate against the
+    # standard trust store, so verification has to be off for this host.
+    session = async_get_clientsession(hass, verify_ssl=False)
 
     async with asyncio.timeout(10):
         async with session.get(API_URL) as response:
@@ -142,8 +144,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._models_by_type = await _async_fetch_device_types(self.hass)
             except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
                 _LOGGER.warning(
-                    "Could not fetch Apple's device list (%s); falling back to "
-                    "entering a model identifier by hand",
+                    "Could not fetch Apple's device list from %s (%s: %s); "
+                    "falling back to entering a model identifier by hand",
+                    API_URL,
+                    type(err).__name__,
                     err,
                 )
                 return await self.async_step_manual()
