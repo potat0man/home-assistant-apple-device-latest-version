@@ -1,6 +1,13 @@
 Apple Device Latest Version integration for Home Assistant
 
-Add device model like iPhone14,4 iPad13,8 Watch7,1 AppleTV11,1
+Tracks the latest iOS/iPadOS/watchOS/tvOS/macOS version available for a given Apple device.
+
+## Adding a device
+
+1. Choose the device type — iPhone, iPad, Apple Watch, Apple TV, HomePod, Apple Vision Pro or a Mac family.
+2. Choose the model, then name the sensor.
+
+Both lists come from Apple's own version feed, so they stay current on their own. The model can also be typed by hand (for example `iPhone14,4`) if it is not in the list.
 
 ## Install
 
