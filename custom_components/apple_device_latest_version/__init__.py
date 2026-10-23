@@ -1,27 +1,28 @@
 from __future__ import annotations
 
-import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-_LOGGER = logging.getLogger(__name__)
+from .coordinator import AppleVersionCoordinator
 
 DOMAIN = "apple_device_latest_version"
 PLATFORMS = ["sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
+    coordinator = AppleVersionCoordinator(hass, entry)
 
+    # Fetch before forwarding to the sensor platform. If Apple's feed is
+    # unreachable (common right after Home Assistant starts, before the network
+    # is up), this raises ConfigEntryNotReady here, where Home Assistant
+    # handles it by retrying the setup with backoff. Raised from inside the
+    # forwarded platform instead, it is rejected and the entry never recovers.
+    await coordinator.async_config_entry_first_refresh()
+
+    entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
